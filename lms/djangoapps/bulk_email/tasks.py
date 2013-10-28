@@ -310,7 +310,7 @@ def send_course_email(entry_id, email_id, to_list, global_email_context, subtask
             )
     except Exception:
         # Unexpected exception. Try to write out the failure to the entry before failing.
-        log.exception("Send-email task %s: failed unexpectedly!", current_task_id)
+        log.exception("Send-email task %s for email %s: failed unexpectedly!", current_task_id, email_id)
         # We got here for really unexpected reasons.  Since we don't know how far
         # the task got in emailing, we count all recipients as having failed.
         # It at least keeps the counts consistent.
@@ -320,22 +320,23 @@ def send_course_email(entry_id, email_id, to_list, global_email_context, subtask
 
     if send_exception is None:
         # Update the InstructorTask object that is storing its progress.
-        log.info("Send-email task %s: succeeded", current_task_id)
+        log.info("Send-email task %s for email %s: succeeded", current_task_id, email_id)
         update_subtask_status(entry_id, current_task_id, new_subtask_status)
     elif isinstance(send_exception, RetryTaskError):
         # If retrying, a RetryTaskError needs to be returned to Celery.
         # We assume that the the progress made before the retry condition
         # was encountered has already been updated before the retry call was made,
         # so we only log here.
-        log.warning("Send-email task %s: being retried", current_task_id)
+        log.warning("Send-email task %s for email %s: being retried", current_task_id, email_id)
         raise send_exception  # pylint: disable=E0702
     else:
-        log.error("Send-email task %s: failed: %s", current_task_id, send_exception)
+        log.error("Send-email task %s for email %s: failed: %s", current_task_id, email_id, send_exception)
         update_subtask_status(entry_id, current_task_id, new_subtask_status)
         raise send_exception  # pylint: disable=E0702
 
-    log.info("Send-email task %s: returning status %s", current_task_id, new_subtask_status)
-    return new_subtask_status
+    # return status in a form that can be serialized by Celery into JSON:
+    log.info("Send-email task %s for email %s: returning status %s", current_task_id, email_id, new_subtask_status)
+    return new_subtask_status.to_dict()
 
 
 def _filter_optouts_from_recipients(to_list, course_id):
